@@ -121,8 +121,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;heigh
 .pg-lbl{position:absolute;top:-20px;left:0;font-size:10px;color:#aaa}
 /* STAMPS */
 .stamp{position:absolute;cursor:move;user-select:none;touch-action:none;border:2px solid var(--p);border-radius:5px;overflow:visible}
-.stamp-in{width:100%;height:100%;overflow:hidden;border-radius:3px}
-.stamp-in canvas{display:block;width:100%;height:100%}
+.stamp-in{width:100%;height:100%;overflow:hidden;border-radius:3px;display:flex;align-items:center;justify-content:center}
+.stamp-in canvas{display:block;width:100%;height:100%;image-rendering:auto}
 .stamp.qrm{background:transparent;border-color:rgba(64,53,143,.4);border-style:dashed}
 .knob{position:absolute;bottom:-6px;right:-6px;width:13px;height:13px;background:var(--p);border-radius:3px;cursor:se-resize;touch-action:none;z-index:5;border:2px solid #fff}
 .stamp-tb{position:absolute;top:-34px;left:50%;transform:translateX(-50%);background:#1A1535;border-radius:7px;padding:4px 7px;display:none;gap:4px;z-index:10;white-space:nowrap}
@@ -524,7 +524,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;heigh
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--p)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           <span id="doc-nm" style="font-size:12px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px"></span>
           <span id="doc-mt" style="font-size:11px;color:var(--ink3)"></span>
-          <button id="btn-ganti" style="font-size:11px;color:var(--p);font-weight:500;background:none;border:none;cursor:pointer;padding:0 4px;display:none" onclick="document.getElementById('pdf-input').click()">Ganti</button>
+          <button id="btn-ganti" style="font-size:11px;color:var(--p);font-weight:500;background:none;border:none;cursor:pointer;padding:0 4px;display:none">Ganti</button>
         </div>
         <div class="vsep"></div>
         <button class="vbtn" id="btn-zo"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
@@ -771,10 +771,20 @@ function loadPDF(file){
       var h=new Uint8Array(buf,0,4);
       if(String.fromCharCode(h[0],h[1],h[2],h[3])!=='%PDF'){alert('File bukan PDF valid.');return;}
       S.pdfBytes=buf; S.pdfName=file.name;
-      document.getElementById('pempty').style.display='none';
-      document.getElementById('doc-nm').textContent=file.name;
-      document.getElementById('doc-mt').textContent=(Math.round(file.size/1024/102.4)/10).toFixed(1)+' MB';
-      document.getElementById('btn-ganti').style.display='inline';
+      // Reset zoom dan scroll agar PDF baru langsung muncul
+      S.zoom=1;
+      var _vzoom=document.getElementById('vzoom');
+      if(_vzoom) _vzoom.textContent='100%';
+      var _ps=document.getElementById('pscroll');
+      if(_ps){_ps.scrollTop=0;_ps.scrollLeft=0;}
+      var _pempty=document.getElementById('pempty');
+      if(_pempty) _pempty.style.display='none';
+      var _dnm=document.getElementById('doc-nm');if(_dnm)_dnm.textContent=file.name;
+      var _dmt=document.getElementById('doc-mt');if(_dmt)_dmt.textContent=(Math.round(file.size/1024/102.4)/10).toFixed(1)+' MB';
+      var _bganti=document.getElementById('btn-ganti');
+      if(_bganti) _bganti.style.display='inline';
+      var _vpg=document.getElementById('vpg');if(_vpg)_vpg.textContent='1 / 1';
+      var _vst=document.getElementById('vst');if(_vst)_vst.textContent='';
       if(S.stamp){S.stamp.el.remove();S.stamp=null;}
   // Reset thumbnails
   var thumbsEl=document.getElementById('thumbs');
@@ -784,20 +794,44 @@ function loadPDF(file){
   _txs=[];
       updateDL(); setStep(2);
       addAct('Dokumen diunggah',file.name);
-      setTimeout(renderPDF,100);
-  setTimeout(initPad,200);
-  updateBotBar();
+      updateBotBar();
+      // Paksa browser reflow dulu sebelum render
+      // agar pscroll sudah punya width yang benar
+      // Ukur lebar pscroll SEKARANG sebelum innerHTML dikosongkan oleh renderPDF
+      var _sc=document.getElementById('pscroll');
+      var _scW=0;
+      if(_sc){
+        var _r=_sc.getBoundingClientRect();
+        _scW=_r.width>50?_r.width:0;
+        if(!_scW) _scW=_sc.offsetWidth||0;
+        if(!_scW&&_sc.parentElement) _scW=_sc.parentElement.getBoundingClientRect().width;
+        _scW=Math.max(_scW-20,280);
+      }
+      setTimeout(function(){
+        renderPDF(_scW||null);
+        setTimeout(initPad,150);
+      },30);
     }catch(err){alert('Gagal: '+err.message);}
   };
   reader.onerror=function(){alert('Gagal membaca file.');};
   reader.readAsArrayBuffer(file);
 }
 var _pdfDoc=null, _curPg=1;
-function renderPDF(){
+function renderPDF(forcedW){
+  return new Promise(function(resolve){
   var sc=document.getElementById('pscroll');
   sc.innerHTML='<div style="text-align:center;padding:40px;color:var(--ink3)">Memuat PDF...</div>';
   S.pages=[];
-  if(typeof pdfjsLib==='undefined'){setTimeout(renderPDF,400);return;}
+  if(typeof pdfjsLib==='undefined'){setTimeout(renderPDF,400);resolve();return;}
+  // Ukur lebar pscroll SEBELUM konten diubah
+  var DPR=window.devicePixelRatio||1;
+  var scW=forcedW||(function(){
+    var r=sc.getBoundingClientRect();
+    var w=r.width>50?r.width:0;
+    if(!w&&sc.parentElement) w=sc.parentElement.getBoundingClientRect().width;
+    if(!w){var _v=sc.closest?sc.closest('.viewer'):null;w=sc.offsetWidth||(_v?_v.offsetWidth:0)||window.innerWidth-40||700;}
+    return Math.max(w-20,280);
+  })();
   pdfjsLib.getDocument({data:S.pdfBytes.slice(0)}).promise.then(function(doc){
     _pdfDoc=doc; _curPg=1;
     var n=doc.numPages;
@@ -807,11 +841,8 @@ function renderPDF(){
     thumbs.innerHTML=''; thumbs.classList.add('show');
     var DPR=window.devicePixelRatio||1;
     // Ukur width - mobile friendly
-    var scRect=sc.getBoundingClientRect();
-    var scW=scRect.width>50?scRect.width:0;
-    if(!scW&&sc.parentElement) scW=sc.parentElement.getBoundingClientRect().width;
-    if(!scW) scW=sc.offsetWidth||window.innerWidth||700;
-    scW=Math.max(scW-20,280);
+    // scW sudah diukur di atas (dari forcedW atau getBoundingClientRect sebelum clear)
+    // Jangan override di sini
     var chain=Promise.resolve();
     for(var i=1;i<=n;i++){
       (function(pn){
@@ -835,6 +866,24 @@ function renderPDF(){
             sc.appendChild(wrap);
             S.pages.push({wrap:wrap,pdfW:vp0.width,pdfH:vp0.height,dW:Math.round(vp0.width*css),dH:Math.round(vp0.height*css)});
             return pg.render({canvasContext:c.getContext('2d'),viewport:vp}).promise.then(function(){
+              // Re-attach stamp jika halaman ini punya stamp
+              if(S.stamp&&S.stamp.pidx===pn-1){
+                S.pages[pn-1].wrap.appendChild(S.stamp.el);
+                // Update posisi stamp sesuai skala baru
+                var oldInf=S.stamp;
+                S.stamp.el.style.left=oldInf.x+'px';
+                S.stamp.el.style.top=oldInf.y+'px';
+                S.stamp.el.style.width=oldInf.w+'px';
+                S.stamp.el.style.height=oldInf.h+'px';
+              }
+              // Re-attach txstamps untuk halaman ini
+              for(var ti=0;ti<_txs.length;ti++){
+                if(_txs[ti].pidx===pn-1){
+                  S.pages[pn-1].wrap.appendChild(_txs[ti].el);
+                  _txs[ti].el.style.left=_txs[ti].x+'px';
+                  _txs[ti].el.style.top=_txs[ti].y+'px';
+                }
+              }
               var th=document.createElement('div');
               th.className='thumb'+(pn===1?' active':'');
               th.dataset.pn=String(pn);
@@ -857,16 +906,22 @@ function renderPDF(){
         });
       })(i);
     }
+    chain.then(function(){resolve();});
   }).catch(function(err){
     document.getElementById('pscroll').innerHTML='<div style="padding:24px;color:var(--red)">Gagal memuat PDF: '+err.message+'</div>';
+    resolve();
   });
+  }); // end Promise
 }
 var pad=document.getElementById('sigpad');
 var cvs=document.getElementById('sigcvs');
 var ctx=cvs.getContext('2d');
 var offCvs=document.createElement('canvas');
 var offCtx=offCvs.getContext('2d');
-var DPR2=1, SIG_LW=1.5, HD=6;
+var DPR2=window.devicePixelRatio||1;
+var SIG_LW=1.5;
+// HD factor: makin tinggi DPR makin besar HD agar tetap smooth
+var HD=Math.max(6, Math.ceil(6*DPR2));
 var _strokes=[],_cur=null,_dn=false;
 function initPad(){
   var r=pad.getBoundingClientRect();
@@ -883,33 +938,111 @@ function initPad(){
   redrawAll();
 }
 new ResizeObserver(initPad).observe(pad);
-function flush2(){if(offCvs.width<1||cvs.width<1)return;ctx.clearRect(0,0,cvs.width,cvs.height);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(offCvs,0,0,offCvs.width,offCvs.height,0,0,cvs.width,cvs.height);}
+function flush2(){
+  if(offCvs.width<1||cvs.width<1)return;
+  ctx.clearRect(0,0,cvs.width,cvs.height);
+  ctx.imageSmoothingEnabled=true;
+  ctx.imageSmoothingQuality='high';
+  // Scale dengan anti-aliasing penuh
+  ctx.save();
+  ctx.scale(cvs.width/offCvs.width,cvs.height/offCvs.height);
+  ctx.drawImage(offCvs,0,0);
+  ctx.restore();
+}
 function drawStroke(c,pts,lw,col){
   if(!pts||pts.length<1)return;
   c.save(); c.strokeStyle=col||'#1a1535'; c.lineWidth=lw; c.lineCap='round'; c.lineJoin='round';
   if(pts.length===1){c.beginPath();c.arc(pts[0].x,pts[0].y,lw/2,0,Math.PI*2);c.fillStyle=col||'#1a1535';c.fill();}
   else{c.beginPath();c.moveTo(pts[0].x,pts[0].y);
     if(pts.length===2){c.lineTo(pts[1].x,pts[1].y);}
-    else{var T=0.5;for(var i=0;i<pts.length-1;i++){var p0=pts[Math.max(i-1,0)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(i+2,pts.length-1)];c.bezierCurveTo(p1.x+(p2.x-p0.x)*T,p1.y+(p2.y-p0.y)*T,p2.x-(p3.x-p1.x)*T,p2.y-(p3.y-p1.y)*T,p2.x,p2.y);}}
+    else if(pts.length===3){
+      // Quadratic untuk 3 titik
+      c.quadraticCurveTo(pts[1].x,pts[1].y,pts[2].x,pts[2].y);
+    }
+    else{
+      // Catmull-Rom dengan tension 0.4 untuk hasil lebih smooth
+      var T=0.4;
+      for(var i=0;i<pts.length-1;i++){
+        var p0=pts[Math.max(i-1,0)];
+        var p1=pts[i];
+        var p2=pts[i+1];
+        var p3=pts[Math.min(i+2,pts.length-1)];
+        var cp1x=p1.x+(p2.x-p0.x)*T;
+        var cp1y=p1.y+(p2.y-p0.y)*T;
+        var cp2x=p2.x-(p3.x-p1.x)*T;
+        var cp2y=p2.y-(p3.y-p1.y)*T;
+        c.bezierCurveTo(cp1x,cp1y,cp2x,cp2y,p2.x,p2.y);
+      }
+    }
     c.stroke();}
   c.restore();
 }
 function redrawAll(){if(offCvs.width<1)return;offCtx.clearRect(0,0,offCvs.width,offCvs.height);var lw=SIG_LW*HD;for(var i=0;i<_strokes.length;i++)drawStroke(offCtx,_strokes[i],lw,S.inkColor);if(_cur)drawStroke(offCtx,_cur,lw,S.inkColor);flush2();}
 function getpt(e){var r=cvs.getBoundingClientRect();var s=(e.touches&&e.touches[0])||e;return{x:(s.clientX-r.left)*HD,y:(s.clientY-r.top)*HD};}
 cvs.addEventListener('pointerdown',function(e){e.preventDefault();_dn=true;cvs.setPointerCapture(e.pointerId);if(S.savedImg){S.savedImg=null;offCtx.clearRect(0,0,offCvs.width,offCvs.height);}_cur=[getpt(e)];document.getElementById('sighint').style.opacity='0';S.sigHas=true;S.activeSig=-1;document.querySelectorAll('.sv-item').forEach(function(el){el.classList.remove('act');});});
-cvs.addEventListener('pointermove',function(e){e.preventDefault();if(!_dn||!_cur)return;var raw=getpt(e),last=_cur[_cur.length-1];var dx=raw.x-last.x,dy=raw.y-last.y;if(dx*dx+dy*dy<9)return;_cur.push({x:last.x+(raw.x-last.x)*0.72,y:last.y+(raw.y-last.y)*0.72});offCtx.clearRect(0,0,offCvs.width,offCvs.height);var lw=SIG_LW*HD;for(var i=0;i<_strokes.length;i++)drawStroke(offCtx,_strokes[i],lw,S.inkColor);drawStroke(offCtx,_cur,lw,S.inkColor);flush2();});
+cvs.addEventListener('pointermove',function(e){
+  e.preventDefault();
+  if(!_dn||!_cur)return;
+  var raw=getpt(e);
+  var last=_cur[_cur.length-1];
+  var dx=raw.x-last.x,dy=raw.y-last.y;
+  // Min distance lebih besar untuk filter micro-jitter mouse laptop
+  var minDist=DPR2>1?6:12;
+  if(dx*dx+dy*dy<minDist*minDist)return;
+  // EMA smoothing lebih kuat (0.5 = lebih smooth dari 0.72)
+  var alpha=0.45;
+  var sx=last.x+(raw.x-last.x)*alpha;
+  var sy=last.y+(raw.y-last.y)*alpha;
+  _cur.push({x:sx,y:sy});
+  offCtx.clearRect(0,0,offCvs.width,offCvs.height);
+  var lw=SIG_LW*HD;
+  for(var i=0;i<_strokes.length;i++)drawStroke(offCtx,_strokes[i],lw,S.inkColor);
+  drawStroke(offCtx,_cur,lw,S.inkColor);
+  flush2();
+});
 cvs.addEventListener('pointerup',function(e){e.preventDefault();if(_cur&&_cur.length>0)_strokes.push(_cur);_cur=null;_dn=false;redrawAll();if(_strokes.length>0){addAct('Tanda tangan dibuat','Canvas TTD');updateBotBar();}});
 cvs.addEventListener('pointercancel',function(){_cur=null;_dn=false;});
 function clearPad(){_strokes=[];_cur=null;S.savedImg=null;S.sigHas=false;S.activeSig=-1;offCtx.clearRect(0,0,offCvs.width,offCvs.height);ctx.clearRect(0,0,cvs.width,cvs.height);document.getElementById('sighint').style.opacity='1';document.querySelectorAll('.sv-item').forEach(function(el){el.classList.remove('act');});if(S.stamp){S.stamp.el.remove();S.stamp=null;updateDL();}updateBotBar();}
 function padHas(){return _strokes.length>0||S.sigHas;}
 function getSigURL(){
-  if(_strokes.length===0){if(!S.sigHas)return null;if(S.savedImg){var tc=document.createElement('canvas');tc.width=S.savedImg.naturalWidth;tc.height=S.savedImg.naturalHeight;tc.getContext('2d').drawImage(S.savedImg,0,0);return tc.toDataURL('image/png',1.0);}return cvs.toDataURL('image/png',1.0);}
+  if(_strokes.length===0){
+    if(!S.sigHas)return null;
+    if(S.savedImg){
+      // Export saved image dengan resolusi tinggi
+      var tc=document.createElement('canvas');
+      tc.width=S.savedImg.naturalWidth;tc.height=S.savedImg.naturalHeight;
+      var tctx=tc.getContext('2d');
+      tctx.imageSmoothingEnabled=true;tctx.imageSmoothingQuality='high';
+      tctx.drawImage(S.savedImg,0,0);
+      return tc.toDataURL('image/png',1.0);
+    }
+    return cvs.toDataURL('image/png',1.0);
+  }
+  // Hitung bounding box dari strokes (koordinat HD)
   var x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
-  for(var i=0;i<_strokes.length;i++)for(var j=0;j<_strokes[i].length;j++){var p=_strokes[i][j];x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y);}
+  for(var i=0;i<_strokes.length;i++)
+    for(var j=0;j<_strokes[i].length;j++){
+      var p=_strokes[i][j];
+      x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);
+      x1=Math.max(x1,p.x);y1=Math.max(y1,p.y);
+    }
   if(x0===Infinity)return cvs.toDataURL('image/png',1.0);
-  var pd=SIG_LW*HD*2;x0=Math.max(0,Math.round(x0-pd));y0=Math.max(0,Math.round(y0-pd));x1=Math.min(offCvs.width,Math.round(x1+pd));y1=Math.min(offCvs.height,Math.round(y1+pd));
-  var cw=x1-x0,ch=y1-y0;if(cw<1||ch<1)return cvs.toDataURL('image/png',1.0);
-  var exp=document.createElement('canvas');exp.width=cw;exp.height=ch;exp.getContext('2d').drawImage(offCvs,x0,y0,cw,ch,0,0,cw,ch);return exp.toDataURL('image/png',1.0);
+  // Padding 2x linewidth
+  var pd=SIG_LW*HD*2;
+  x0=Math.max(0,Math.floor(x0-pd));
+  y0=Math.max(0,Math.floor(y0-pd));
+  x1=Math.min(offCvs.width,Math.ceil(x1+pd));
+  y1=Math.min(offCvs.height,Math.ceil(y1+pd));
+  var cw=x1-x0,ch=y1-y0;
+  if(cw<1||ch<1)return cvs.toDataURL('image/png',1.0);
+  // Export dengan resolusi penuh dari offscreen canvas
+  var exp=document.createElement('canvas');
+  exp.width=cw;exp.height=ch;
+  var ectx=exp.getContext('2d');
+  ectx.imageSmoothingEnabled=true;
+  ectx.imageSmoothingQuality='high';
+  ectx.drawImage(offCvs,x0,y0,cw,ch,0,0,cw,ch);
+  return exp.toDataURL('image/png',1.0);
 }
 function getSigAsp(){if(_strokes.length>0){var x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(var i=0;i<_strokes.length;i++)for(var j=0;j<_strokes[i].length;j++){var p=_strokes[i][j];x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y);}return Math.max(1.2,Math.min((x1-x0)/Math.max(y1-y0,1),9));}if(S.savedImg)return Math.max(1.2,Math.min(S.savedImg.naturalWidth/Math.max(S.savedImg.naturalHeight,1),9));return 3.5;}
 function saveSig(){if(!padHas()){alert('Buat tanda tangan dulu.');return;}var name=document.getElementById('sv-name').value.trim()||('TTD '+(S.saved.length+1));var url=getSigURL();if(!url)return;S.saved.push({name:name,url:url,id:uid()});try{localStorage.setItem('ttdin_sigs',JSON.stringify(S.saved));}catch(e){}document.getElementById('sv-name').value='';renderSaved();}
@@ -996,7 +1129,11 @@ function buildStamp(pidx,x,y,w,h){
   db.onclick=function(){S.stamp.el.remove();S.stamp=null;updateDL();updateBotBar();};
   tb.appendChild(db); el.appendChild(tb);
   var inner=document.createElement('div');inner.className='stamp-in';
-  var mc=document.createElement('canvas');mc.width=w;mc.height=h;
+  // Render stamp di resolusi 2x untuk anti-aliasing yang baik
+  var STAMP_DPR=Math.max(window.devicePixelRatio||1,2);
+  var mc=document.createElement('canvas');
+  mc.width=Math.round(w*STAMP_DPR);mc.height=Math.round(h*STAMP_DPR);
+  mc.style.width=w+'px';mc.style.height=h+'px';
   if(S.mode==='qr')drawQR(mc,BASE_URL+'?preview=1');else drawSigInto(mc);
   inner.appendChild(mc);el.appendChild(inner);
   var knob=document.createElement('div');knob.className='knob';el.appendChild(knob);
@@ -1049,7 +1186,12 @@ function drawQR(mc,data){
 }
 function updateDL(){document.getElementById('btn-dl').disabled=(!S.stamp&&_txs.length===0);}
 function attachDrag(el){var ox,oy,mx,my,on=false;el.addEventListener('pointerdown',function(e){if(e.target.classList.contains('knob')||e.target.classList.contains('stbtn'))return;on=true;el.setPointerCapture(e.pointerId);mx=e.clientX;my=e.clientY;ox=S.stamp.x;oy=S.stamp.y;el.style.opacity='.85';});el.addEventListener('pointermove',function(e){if(!on)return;var inf=S.pages[S.stamp.pidx];S.stamp.x=Math.max(0,Math.min(ox+(e.clientX-mx),inf.dW-S.stamp.w));S.stamp.y=Math.max(0,Math.min(oy+(e.clientY-my),inf.dH-S.stamp.h));el.style.left=S.stamp.x+'px';el.style.top=S.stamp.y+'px';});el.addEventListener('pointerup',function(){on=false;el.style.opacity='1';});el.addEventListener('pointerleave',function(){on=false;el.style.opacity='1';});}
-function attachResize(knob){var sw,sh,mx,my,on=false;knob.addEventListener('pointerdown',function(e){e.stopPropagation();on=true;knob.setPointerCapture(e.pointerId);mx=e.clientX;my=e.clientY;sw=S.stamp.w;sh=S.stamp.h;});knob.addEventListener('pointermove',function(e){if(!on)return;var inf=S.pages[S.stamp.pidx];if(S.stamp.el.classList.contains('qrm')){var ns=Math.max(40,Math.min(sw+(e.clientX-mx),inf.dW-S.stamp.x));S.stamp.w=ns;S.stamp.h=ns;}else{S.stamp.w=Math.max(60,Math.min(sw+(e.clientX-mx),inf.dW-S.stamp.x));S.stamp.h=Math.max(16,Math.min(sh+(e.clientY-my),inf.dH-S.stamp.y));}S.stamp.el.style.width=S.stamp.w+'px';S.stamp.el.style.height=S.stamp.h+'px';S.stamp.mc.width=S.stamp.w;S.stamp.mc.height=S.stamp.h;if(S.stamp.el.classList.contains('qrm'))drawQR(S.stamp.mc,BASE_URL+'?preview=1');else drawSigInto(S.stamp.mc);});knob.addEventListener('pointerup',function(){on=false;});knob.addEventListener('pointerleave',function(){on=false;});}
+function attachResize(knob){var sw,sh,mx,my,on=false;knob.addEventListener('pointerdown',function(e){e.stopPropagation();on=true;knob.setPointerCapture(e.pointerId);mx=e.clientX;my=e.clientY;sw=S.stamp.w;sh=S.stamp.h;});knob.addEventListener('pointermove',function(e){if(!on)return;var inf=S.pages[S.stamp.pidx];if(S.stamp.el.classList.contains('qrm')){var ns=Math.max(40,Math.min(sw+(e.clientX-mx),inf.dW-S.stamp.x));S.stamp.w=ns;S.stamp.h=ns;}else{S.stamp.w=Math.max(60,Math.min(sw+(e.clientX-mx),inf.dW-S.stamp.x));S.stamp.h=Math.max(16,Math.min(sh+(e.clientY-my),inf.dH-S.stamp.y));}S.stamp.el.style.width=S.stamp.w+'px';S.stamp.el.style.height=S.stamp.h+'px';var _sdpr=Math.max(window.devicePixelRatio||1,2);
+    S.stamp.mc.width=Math.round(S.stamp.w*_sdpr);
+    S.stamp.mc.height=Math.round(S.stamp.h*_sdpr);
+    S.stamp.mc.style.width=S.stamp.w+'px';
+    S.stamp.mc.style.height=S.stamp.h+'px';
+    if(S.stamp.el.classList.contains('qrm'))drawQR(S.stamp.mc,BASE_URL+'?preview=1');else drawSigInto(S.stamp.mc);});knob.addEventListener('pointerup',function(){on=false;});knob.addEventListener('pointerleave',function(){on=false;});}
 function updateBotBar(){
   var dot=document.getElementById('bs-dot');
   var msg=document.getElementById('bs-msg');
@@ -1131,8 +1273,17 @@ async function doSave(){
     }
     if(S.stamp){
       var pg=pages[S.stamp.pidx];var pgSize=pg.getSize();var inf=S.pages[S.stamp.pidx];
-      var sx=pgSize.width/inf.dW,sy=pgSize.height/inf.dH;
-      var px=S.stamp.x*sx,pw=S.stamp.w*sx,ph=S.stamp.h*sy;
+      // Gunakan pdfW/pdfH (PDF point asli) dan dW/dH (CSS pixel saat zoom=1)
+      // Normalisasi dulu ke zoom=1 agar tidak terpengaruh zoom saat screenshot
+      // sx: konversi CSS pixel → PDF points
+      // pdfW = ukuran PDF asli (points), dW = ukuran render di layar (CSS px)
+      // stamp.x/w/h disimpan dalam CSS px pada level zoom saat ini
+      // Pertama normalisasi ke zoom=1, lalu konversi ke PDF points
+      var sx=inf.pdfW/inf.dW*S.zoom;  // pt per CSS px (zoom corrected)
+      var sy=inf.pdfH/inf.dH*S.zoom;
+      var px=S.stamp.x*sx;
+      var pw=S.stamp.w*sx;
+      var ph=S.stamp.h*sy;
       var py=pgSize.height-(S.stamp.y*sy)-ph;
       if(S.mode==='qr'){
         var pin=document.getElementById('sig-pin').value.trim();
@@ -1155,7 +1306,28 @@ async function doSave(){
         var sigURL3=getSigURL();
         if(!sigURL3){alert('TTD kosong.');btn.disabled=false;btn.textContent='Simpan & Download PDF';return;}
         var pngBuf=await(await fetch(sigURL3)).arrayBuffer();
-        pg.drawImage(await doc.embedPng(pngBuf),{x:px,y:py,width:pw,height:ph,opacity:0.95});
+        var embImg=await doc.embedPng(pngBuf);
+        // Hitung ukuran embed dengan mempertahankan aspect ratio gambar TTD
+        // agar tidak melebar/menyempit saat di-print
+        var imgW=embImg.width, imgH=embImg.height;
+        var imgAsp=imgW/imgH;
+        // Fit dalam bounding box stamp (pw x ph) dengan menjaga aspek rasio
+        var fitW=pw, fitH=ph;
+        if(fitW/fitH > imgAsp){
+          fitW=fitH*imgAsp; // terlalu lebar → kurangi width
+        } else {
+          fitH=fitW/imgAsp; // terlalu tinggi → kurangi height
+        }
+        // Center dalam stamp
+        var fitX=px+(pw-fitW)/2;
+        var fitY=py+(ph-fitH)/2;
+        pg.drawImage(embImg,{
+          x:Math.round(fitX*10)/10,
+          y:Math.round(fitY*10)/10,
+          width:Math.round(fitW*10)/10,
+          height:Math.round(fitH*10)/10,
+          opacity:0.95
+        });
         var emb2=MK+'|T:'+token+'|D:'+docFP+'|TS:'+toWIB(now);
         doc.setSubject(emb2);doc.setKeywords(['TTDin','signed','token:'+token,'fp:'+docFP]);
       }
@@ -1289,7 +1461,19 @@ function renderHistory(){
   el.innerHTML=html;
 }
 function dlBlob(blob,name){var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(a.href);},6000);}
-function setZoom(z){S.zoom=z;document.getElementById('vzoom').textContent=Math.round(z*100)+'%';if(S.pdfBytes)renderPDF();}
+function setZoom(z){
+  S.zoom=z;
+  document.getElementById('vzoom').textContent=Math.round(z*100)+'%';
+  if(S.pdfBytes){
+    // Simpan posisi scroll relatif sebelum zoom
+    var ps=document.getElementById('pscroll');
+    var scrollRatio=ps.scrollTop/(ps.scrollHeight||1);
+    renderPDF(null).then(function(){
+      // Restore posisi scroll setelah render
+      setTimeout(function(){ps.scrollTop=scrollRatio*ps.scrollHeight;},100);
+    }).catch(function(){});
+  }
+}
 /* EVENT BINDING */
 document.getElementById('mb-normal').onclick=function(){setMode('normal');};
 document.getElementById('mb-qr').onclick=function(){setMode('qr');};
@@ -1307,11 +1491,21 @@ document.getElementById('btn-fit').onclick=function(){setZoom(1);};
 document.getElementById('btn-prev').onclick=function(){if(_curPg>1&&S.pages[_curPg-2]){_curPg--;S.pages[_curPg-1].wrap.scrollIntoView({behavior:'smooth',block:'center'});document.getElementById('vpg').textContent=_curPg+' / '+S.pages.length;}};
 document.getElementById('btn-next').onclick=function(){if(_curPg<S.pages.length){_curPg++;S.pages[_curPg-1].wrap.scrollIntoView({behavior:'smooth',block:'center'});document.getElementById('vpg').textContent=_curPg+' / '+S.pages.length;}};
 var pdfInput=document.getElementById('pdf-input');
-pdfInput.onchange=function(){if(this.files&&this.files[0])loadPDF(this.files[0]);this.value='';};
+pdfInput.onchange=function(){
+  var f=this.files&&this.files[0];
+  this.value='';
+  if(f) loadPDF(f);
+};
 var pscroll=document.getElementById('pscroll');
-pscroll.ondragover=function(e){e.preventDefault();pscroll.style.outline='2px dashed var(--p)';};
-pscroll.ondragleave=function(){pscroll.style.outline='';};
-pscroll.ondrop=function(e){e.preventDefault();pscroll.style.outline='';if(e.dataTransfer&&e.dataTransfer.files[0])loadPDF(e.dataTransfer.files[0]);};
+// Drag & drop pada seluruh area viewer (pscroll + pempty)
+function setupDrop(el){
+  el.addEventListener('dragover',function(e){e.preventDefault();e.stopPropagation();pscroll.style.outline='2px dashed var(--p)';pscroll.style.background='var(--pp)';});
+  el.addEventListener('dragleave',function(e){e.preventDefault();pscroll.style.outline='';pscroll.style.background='';});
+  el.addEventListener('drop',function(e){e.preventDefault();e.stopPropagation();pscroll.style.outline='';pscroll.style.background='';var f=e.dataTransfer&&(e.dataTransfer.files[0]||null);if(f)loadPDF(f);});
+}
+setupDrop(pscroll);
+setupDrop(document.getElementById('pempty'));
+setupDrop(document.getElementById('pg-sign'));
 var verifyInput=document.getElementById('verify-input');
 var vdrop=document.getElementById('vdrop');
 vdrop.onclick=function(){verifyInput.click();};
@@ -1336,6 +1530,8 @@ document.getElementById('edit-italic').onclick=function(){if(!_selTs)return;_sel
 document.getElementById('edit-done').onclick=deselectTx;
 pscroll.addEventListener('pointerdown',function(e){if(!e.target.closest('.txstamp'))deselectTx();});
 document.getElementById('nb-verify').onclick=function(){goPage('verify');};
+var _btnGanti=document.getElementById('btn-ganti');
+if(_btnGanti) _btnGanti.onclick=function(e){e.preventDefault();e.stopPropagation();document.getElementById('pdf-input').click();};
 document.getElementById('nb-history').onclick=function(){goPage('history');};
 setTimeout(initPad,200);
 // Jika dibuka via scan QR (ada ?token= di URL), langsung ke verifikasi
