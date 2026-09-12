@@ -408,7 +408,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;heigh
         <div id="desc-qr" class="mode-desc" style="display:none"><strong>Mode Privasi:</strong> Hanya QR di PDF. Penerima scan QR lalu masukkan PIN untuk lihat TTD asli.</div>
         <div id="pin-blk" style="display:none;margin-top:11px">
           <div class="sec-ttl" style="margin-bottom:5px">PIN Keamanan</div>
-          <input class="pin-field" id="sig-pin" type="password" maxlength="8" placeholder="Min. 6 digit" inputmode="numeric">
+          <input class="pin-field" id="sig-pin" type="password" maxlength="8" placeholder="Min. 6 digit" inputmode="numeric" autocomplete="new-password">
           <div style="font-size:10px;color:var(--ink3);margin-top:3px">AES-256-GCM &mdash; PIN tidak tersimpan di file</div>
           <div style="margin-top:10px">
             <div class="sec-ttl" style="margin-bottom:6px">Warna Barcode</div>
@@ -524,7 +524,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;heigh
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--p)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           <span id="doc-nm" style="font-size:12px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px"></span>
           <span id="doc-mt" style="font-size:11px;color:var(--ink3)"></span>
-          <button id="btn-ganti" style="font-size:11px;color:var(--p);font-weight:500;background:none;border:none;cursor:pointer;padding:0 4px;display:none">Ganti</button>
+          <button id="btn-ganti" title="Ganti PDF" style="font-size:11px;color:var(--p);font-weight:500;background:none;border:none;cursor:pointer;padding:0 4px;display:none">Ganti</button>
         </div>
         <div class="vsep"></div>
         <button class="vbtn" id="btn-zo"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
@@ -590,7 +590,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;heigh
   <div class="vpage">
     <h1>Verifikasi Dokumen</h1>
     <p class="vpage-sub">Upload PDF yang sudah ditandatangani TTDin untuk memeriksa keaslian dan mendeteksi perubahan dokumen.</p>
-    <div class="vdrop" id="vdrop"><div style="font-size:40px">&#128269;</div><h3>Upload PDF untuk diverifikasi</h3><p>Drag dan drop atau klik untuk pilih file</p></div>
+    <div class="vdrop" id="vdrop"><div style="font-size:40px">&#128269;</div><h3>Upload PDF untuk diverifikasi</h3><p>Drag dan drop atau klik untuk pilih file</p><p style="font-size:11px;color:var(--ink3);margin-top:8px">Hanya file PDF yang sudah ditandatangani TTDin</p></div>
     <div id="vresult"></div>
   </div>
 </div>
@@ -636,14 +636,18 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;heigh
 <script>
 if(typeof pdfjsLib!=='undefined') pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 var MK='TTDIN1', QK='TTDINQR1';
+// Helper: safe getElementById
+function $id(id){return document.getElementById(id);}
+function $set(id,prop,val){var el=$id(id);if(el)el[prop]=val;}
+function $css(id,prop,val){var el=$id(id);if(el)el.style[prop]=val;}
 // URL base untuk QR -- ganti dengan domain setelah ttdin.id aktif
 var BASE_URL=(function(){
   var h=window.location.href;
-  // Jika buka dari file lokal, pakai placeholder
+  // Jika buka dari file lokal, pakai domain production
   if(h.indexOf('file://')===0||h.indexOf('localhost')>=0||h.indexOf('127.0.0.1')>=0){
-    return 'https://ttdin.vercel.app/TTDin.html';
+    return 'https://ttdin.id/TTDin.html';
   }
-  // Pakai URL aktual (Vercel atau ttdin.id)
+  // Pakai URL aktual
   return h.split('?')[0];
 })();
 var S={pdfBytes:null,pdfName:'',pages:[],stamp:null,placing:false,placingTxt:false,sigHas:false,mode:'normal',jenis:'gambar',hist:[],saved:[],activeSig:-1,savedImg:null,inkColor:'#1a1535',zoom:1,qrFg:'#40358F',qrBg:'transparent'};
@@ -756,7 +760,7 @@ function renderActs(){
     html2+='<div class="tl-item">';
     html2+='<div class="tl-ico"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--p)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg></div>';
     html2+='<div class="tl-body"><div class="tl-title">'+a.title+'</div>';
-    html2+='<div class="tl-sub">'+a.sub+' &bull; '+a.ts+'</div></div></div>';
+    html2+='<div class="tl-sub">'+a.sub+' - '+a.ts+'</div></div></div>';
   }
   el.innerHTML=html2;
 }
@@ -1203,30 +1207,36 @@ function updateBotBar(){
 async function computeFP(buf){
   try{
     var doc=await pdfjsLib.getDocument({data:buf.slice(0)}).promise;
-    var txt='';
-    var maxP=Math.min(doc.numPages,5);
-    for(var i=1;i<=maxP;i++){
+    var parts=[];
+    // 1. Jumlah halaman - tidak berubah setelah TTD ditempel
+    parts.push('n:'+doc.numPages);
+    // 2. Dimensi setiap halaman - tidak berubah
+    for(var i=1;i<=doc.numPages;i++){
       var pg=await doc.getPage(i);
-      var ct=await pg.getTextContent();
-      // Normalisasi: ambil teks, trim tiap item, join, lowercase, hapus whitespace ganda
-      var pgTxt=ct.items.map(function(it){return (it.str||'').trim();}).filter(function(s){return s.length>0;}).join('');
-      txt+=pgTxt;
+      var vp=pg.getViewport({scale:1});
+      parts.push('p'+i+':'+Math.round(vp.width)+'x'+Math.round(vp.height));
     }
-    // Normalisasi agresif: hapus semua whitespace, lowercase
-    txt=txt.replace(/\s+/g,'').toLowerCase();
-    if(!txt){
-      // Fallback: pakai dimensi halaman
-      var pg1=await doc.getPage(1);
-      var vp=pg1.getViewport({scale:1});
-      txt='pages:'+doc.numPages+'|w:'+Math.round(vp.width)+'|h:'+Math.round(vp.height);
-    }
-    return (await sha256(txt)).slice(0,24);
-  }catch(e){
-    // Fallback terakhir: hash dari sebagian byte awal file
+    // 3. Teks dari halaman pertama - dinormalisasi sangat agresif
+    // Ambil hanya karakter alfanumerik, sorted agar urutan tidak masalah
     try{
-      var slice=new Uint8Array(buf,0,Math.min(4096,buf.byteLength));
-      var b64=Array.from(slice).map(function(x){return x.toString(16).padStart(2,'0');}).join('');
-      return (await sha256(b64)).slice(0,24);
+      var pg1=await doc.getPage(1);
+      var ct=await pg1.getTextContent();
+      var rawTxt=ct.items.map(function(it){return it.str||'';}).join('');
+      // Normalisasi: hanya ambil huruf dan angka, lowercase, sort chars
+      var normTxt=rawTxt.toLowerCase().replace(/[^a-z0-9]/g,'');
+      // Ambil 200 karakter pertama saja sebagai sample
+      if(normTxt.length>0) parts.push('t:'+normTxt.slice(0,200));
+    }catch(te){}
+    var fp=parts.join('|');
+    return (await sha256(fp)).slice(0,24);
+  }catch(e){
+    // Fallback: dimensi saja
+    try{
+      var doc2=await pdfjsLib.getDocument({data:buf.slice(0)}).promise;
+      var pg2=await doc2.getPage(1);
+      var vp2=pg2.getViewport({scale:1});
+      var fb='n:'+doc2.numPages+'|p1:'+Math.round(vp2.width)+'x'+Math.round(vp2.height);
+      return (await sha256(fb)).slice(0,24);
     }catch(e2){
       return (await sha256('fallback')).slice(0,24);
     }
@@ -1275,7 +1285,7 @@ async function doSave(){
       var pg=pages[S.stamp.pidx];var pgSize=pg.getSize();var inf=S.pages[S.stamp.pidx];
       // Gunakan pdfW/pdfH (PDF point asli) dan dW/dH (CSS pixel saat zoom=1)
       // Normalisasi dulu ke zoom=1 agar tidak terpengaruh zoom saat screenshot
-      // sx: konversi CSS pixel → PDF points
+      // sx: konversi CSS pixel - PDF points
       // pdfW = ukuran PDF asli (points), dW = ukuran render di layar (CSS px)
       // stamp.x/w/h disimpan dalam CSS px pada level zoom saat ini
       // Pertama normalisasi ke zoom=1, lalu konversi ke PDF points
@@ -1314,9 +1324,9 @@ async function doSave(){
         // Fit dalam bounding box stamp (pw x ph) dengan menjaga aspek rasio
         var fitW=pw, fitH=ph;
         if(fitW/fitH > imgAsp){
-          fitW=fitH*imgAsp; // terlalu lebar → kurangi width
+          fitW=fitH*imgAsp; // terlalu lebar - kurangi width
         } else {
-          fitH=fitW/imgAsp; // terlalu tinggi → kurangi height
+          fitH=fitW/imgAsp; // terlalu tinggi - kurangi height
         }
         // Center dalam stamp
         var fitX=px+(pw-fitW)/2;
@@ -1388,7 +1398,7 @@ async function doVerify(file){
     }
     if(!embed||(!embed.includes(MK)&&!embed.includes(QK))){
       out.className='warn';
-      out.innerHTML='<div class="vcard"><div class="vcard-head" style="background:var(--ambs);color:var(--amb)">Bukan Dokumen TTDin</div><div class="vcard-body"><div class="vrow"><div class="vic" style="background:var(--amb);color:#fff">!</div><div>File tidak memiliki tanda tangan TTDin.</div></div></div></div>';
+      out.innerHTML='<div class="vcard"><div class="vcard-head" style="background:var(--ambs);color:var(--amb)">Bukan Dokumen TTDin</div><div class="vcard-body"><div class="vrow"><div class="vic" style="background:var(--amb);color:#fff">!</div><div>File ini tidak memiliki tanda tangan TTDin. Pastikan Anda mengupload file PDF yang sudah ditandatangani menggunakan TTDin.</div></div></div></div>';
       return;
     }
     var curFP=await computeFP(ab);
