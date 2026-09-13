@@ -3,11 +3,29 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="keywords" content="tanda tangan digital, TTD, PDF, Indonesia, verifikasi dokumen, digital signature">
+<!-- SEO Meta Tags -->
+<meta name="keywords" content="tanda tangan digital, TTD digital, TTD online, tanda tangan PDF, tanda tangan dokumen online, tanda tangan online gratis, aplikasi TTD, digital signature Indonesia, tandatangan digital, e-signature Indonesia, tanda tangan elektronik, TTD PDF gratis">
+<meta name="author" content="TTDin">
+<meta name="robots" content="index, follow">
+<meta name="language" content="Indonesian">
 <link rel="canonical" href="https://ttdin.id">
-<meta name="description" content="TTDin - Tanda tangan digital PDF gratis, privacy-first, dan mudah digunakan untuk Indonesia. Tandatangani dokumen tanpa upload ke server.">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://ttdin.id">
 <meta property="og:title" content="TTDin — Tanda Tangan Digital untuk Indonesia">
-<meta property="og:description" content="TTD dokumen PDF secara digital. Gratis, privacy-first, dan tanpa perlu registrasi.">
+<meta property="og:description" content="Tandatangani dokumen PDF secara digital. Gratis, privacy-first, tanpa registrasi. Dokumen tetap di perangkat Anda.">
+<meta property="og:locale" content="id_ID">
+<meta property="og:site_name" content="TTDin">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="TTDin — Tanda Tangan Digital untuk Indonesia">
+<meta name="twitter:description" content="Tandatangani dokumen PDF secara digital. Gratis, privacy-first, tanpa registrasi.">
+<meta name="twitter:site" content="@ttdinid">
+
+<!-- Description -->
+<meta name="description" content="TTDin - Aplikasi tanda tangan digital PDF gratis untuk Indonesia. TTD online tanpa upload ke server, privacy-first, tanpa registrasi. Verifikasi dokumen dan Anti-Crop Protection.">
 <title>TTDin — Tanda Tangan Digital untuk Indonesia</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -194,6 +212,93 @@ footer{background:var(--ink);color:rgba(255,255,255,.6);padding:48px 5%;display:
   .section-title{font-size:26px}
 }
 </style>
+<!-- Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-ELJS95QV87"></script>
+<script>
+window.dataLayer=window.dataLayer||[];
+function gtag(){dataLayer.push(arguments);}
+gtag('js',new Date());
+gtag('config','G-ELJS95QV87');
+</script>
+
+<!-- Schema.org JSON-LD -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "TTDin",
+  "url": "https://ttdin.id",
+  "description": "Aplikasi tanda tangan digital PDF gratis untuk Indonesia. TTD online tanpa upload ke server, privacy-first, tanpa registrasi.",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web Browser",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "IDR"
+  },
+  "featureList": [
+    "Tanda tangan digital PDF",
+    "Verifikasi dokumen",
+    "Barcode Privasi",
+    "Anti-Crop Protection",
+    "Tanpa registrasi",
+    "Privacy-first"
+  ],
+  "inLanguage": "id",
+  "countryOfOrigin": "ID",
+  "publisher": {
+    "@type": "Organization",
+    "name": "TTDin",
+    "url": "https://ttdin.id",
+    "email": "ttdinaja@gmail.com"
+  },
+  "potentialAction": {
+    "@type": "UseAction",
+    "target": "https://ttdin.id/TTDin.html"
+  }
+}
+</script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Apakah TTDin gratis?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Ya. Seluruh fitur TTDin tersedia tanpa biaya untuk pengguna awal. Tidak perlu registrasi, tidak perlu kartu kredit."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Apakah dokumen saya aman di TTDin?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "TTDin dirancang dengan pendekatan privacy-first. Untuk proses utama, dokumen tidak perlu diunggah ke server. Dokumen tetap berada pada perangkat dan browser Anda."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Apakah TTDin bisa dipakai di HP?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Ya. TTDin dirancang untuk digunakan di desktop, tablet, maupun HP. Tanda tangan dapat dibuat dengan jari langsung di layar sentuh."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Apakah saya perlu membuat akun untuk menggunakan TTDin?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Tidak. TTDin dapat digunakan tanpa proses registrasi. Buka aplikasi di browser dan langsung mulai."
+      }
+    }
+  ]
+}
+</script>
 </head>
 <body>
 
@@ -609,13 +714,25 @@ document.getElementById('feedback-form').onsubmit=function(e){
   }
   document.getElementById('fb-message').style.borderColor='';
   var type=document.getElementById('fb-type').value||'Umum';
-  var subject=encodeURIComponent('[TTDin Masukan] '+type);
-  var body=encodeURIComponent('Jenis: '+type+'\n\nMasukan:\n'+msg);
-  document.getElementById('feedback-form').style.display='none';
-  document.getElementById('fb-success').classList.add('show');
-  setTimeout(function(){
-    window.location.href='mailto:ttdinaja@gmail.com?subject='+subject+'&body='+body;
-  },800);
+  var btn=document.querySelector('#feedback-form button[type=submit]');
+  if(btn){btn.disabled=true;btn.textContent='Mengirim...';}
+  // Kirim ke Formspree
+  fetch('https://formspree.io/f/myeyqkba',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Accept':'application/json'},
+    body:JSON.stringify({jenis:type,masukan:msg})
+  }).then(function(r){
+    if(r.ok){
+      document.getElementById('feedback-form').style.display='none';
+      document.getElementById('fb-success').classList.add('show');
+    }else{
+      if(btn){btn.disabled=false;btn.textContent='Kirim Masukan';}
+      alert('Gagal mengirim. Coba lagi.');
+    }
+  }).catch(function(){
+    if(btn){btn.disabled=false;btn.textContent='Kirim Masukan';}
+    alert('Gagal mengirim. Periksa koneksi internet.');
+  });
 };
 
 // Reset border saat user mulai ketik
